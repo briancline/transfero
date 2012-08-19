@@ -1,4 +1,4 @@
-#!/usr/bin/twistd -y
+#!/usr/bin/twistd -ny
 
 import os
 import json
@@ -9,8 +9,8 @@ from twisted.internet import defer
 from twisted.python import log
 
 CONFIG_FILE = "config.json"
-DOMAINS_KEY = "domains"
-RECORDS_KEY = "records"
+DOMAINS_KEY = "domains:"
+RECORDS_KEY = "records:"
 
 
 if __name__ == "__main__":
@@ -30,8 +30,8 @@ class DnsBroker(object):
 		return self.backend.isSetMember(DOMAINS_KEY, zone)
 
 	def getRecord(self, hostname):
-		return '127.0.0.9'
-		#return self.conn.get(RECORDS_KEY + hostname)
+		print "G> ?", RECORDS_KEY + hostname
+		return self.backend.get(RECORDS_KEY + hostname)
 
 
 class RedisBackend(object):
@@ -84,22 +84,28 @@ class RedisBackend(object):
 class BrokerResolver(client.Resolver):
 	def __init__(self, broker, servers):
 		self.broker = broker
-		client.Resolver.__init__(self, servers = servers)
+		client.Resolver.__init__(self, servers = [("8.8.8.8", 53), ("8.8.4.4", 53)])
 		self.ttl = 5
 
 	def lookupAddress(self, name, timeout = None):
 		print "X> lookupAddress ", name
 		record = self.broker.getRecord(name)
-		print "X> record is ", record
 		if record:
+			print "X> record is ", record
 			return [
 					(dns.RRHeader(name, dns.A, dns.IN, self.ttl, dns.Record_A(record, self.ttl)), ), 
 					(), 
 					()
 			]
 		else:
-			return self._lookup(name, dns.IN, dns.A, timeout)
+			print "X> no record, forwarding"
+			return self._lookup(name, dns.IN, dns.A, timeout).\
+				addCallback(self.returnResult, True).\
+				addErrback(self.returnResult, False)
 
+	def returnResult(self, result, success):
+		if success:
+			return result
 
 def bootstrap():
 	if not os.path.exists(CONFIG_FILE):

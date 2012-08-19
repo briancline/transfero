@@ -3,7 +3,7 @@
 		"host": "127.0.0.1",
 		"port": 6379,
 		"pass": "",
-		"prefix": "service.dns."
+		"prefix": "service.dns:"
 	},
 	"upstream": [
 		["8.8.8.8", 53],
