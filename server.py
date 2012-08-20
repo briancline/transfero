@@ -18,7 +18,7 @@ if __name__ == "__main__":
 	print "Usage: twistd -y %s" % sys.argv[0]
 
 
-class DnsBroker(object):
+class DnsServer(object):
 	def __init__(self, backend):
 		self.backend = backend
 
@@ -34,7 +34,7 @@ class DnsBroker(object):
 		return self.backend.get(RECORDS_KEY + hostname)
 
 
-class RedisBackend(object):
+class RedisAdapter(object):
 	def __init__(self, host, port, prefix = ""):
 		self.host = host
 		self.port = port
@@ -81,15 +81,15 @@ class RedisBackend(object):
 		return self.conn.sismember(self.completeKey(key), member)
 
 
-class BrokerResolver(client.Resolver):
-	def __init__(self, broker, servers):
-		self.broker = broker
+class ForwardingResolver(client.Resolver):
+	def __init__(self, server, servers):
+		self.server = server
 		client.Resolver.__init__(self, servers = [("8.8.8.8", 53), ("8.8.4.4", 53)])
 		self.ttl = 5
 
 	def lookupAddress(self, name, timeout = None):
 		print "X> lookupAddress ", name
-		record = self.broker.getRecord(name)
+		record = self.server.getRecord(name)
 		if record:
 			print "X> record is ", record
 			return [
@@ -117,13 +117,10 @@ def bootstrap():
 
 	app = service.Application('redisdns', 1, 1)
 
-	backend = RedisBackend(host = config['redis']['host'], port = config['redis']['port'], prefix = config['redis']['prefix'])
-	backend.setAdd(DOMAINS_KEY, "bc.fm")
-	backend.setAdd(DOMAINS_KEY, "sys.fm")
-	backend.setAdd(DOMAINS_KEY, "dfw9.sysnw.net")
+	backend = RedisAdapter(host = config['redis']['host'], port = config['redis']['port'], prefix = config['redis']['prefix'])
 
-	broker = DnsBroker(backend)
-	resolver = BrokerResolver(broker, servers = config['upstream'])
+	localServer = DnsServer(backend)
+	resolver = ForwardingResolver(localServer, servers = config['upstream'])
 
 	dnsFactory = server.DNSServerFactory(caches = [cache.CacheResolver()], clients = [resolver])
 	dnsUdpFactory = dns.DNSDatagramProtocol(dnsFactory)
